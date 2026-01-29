@@ -395,7 +395,7 @@ app.get('*', (req, res) => {
 // Iniciar servidor solo si se ejecuta directamente (esperar DB)
 if (require.main === module) {
   dbReady.then(() => {
-    app.listen(PORT, () => {
+    app.listen(PORT, '0.0.0.0', () => {
       console.log(`Servidor corriendo en puerto ${PORT}`);
     });
   }).catch(err => {
