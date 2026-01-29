@@ -14,7 +14,6 @@
     "build:local": "npm run build",
     "electron": "electron .",
     "electron:dev": "concurrently \"npm run server:prod\" \"wait-on http://localhost:5000 && electron .\"",
-    "postinstall": "npx @electron/rebuild -f -w sqlite3 || true",
     "build:electron": "npm run build && electron-builder",
     "dist": "npm run build && electron-builder --publish=never --config.npmRebuild=false",
     "dist:packager": "npm run build && electron-packager . \"Rectificadora Santofimio\" --platform=win32 --arch=x64 --out=dist --overwrite --icon=build/icon.ico --asar=false"
