@@ -28,20 +28,13 @@ const {
 const app = express();
 const PORT = process.env.PORT || 5000;
 
-// Inicializar base de datos y exponer promesa de readiness en `app`
-const dbReady = initDatabase();
-app.dbReady = dbReady;
+// Inicializar base de datos
+initDatabase().catch(err => {
+  console.error('Error al inicializar BD:', err);
+});
 
 // Crear directorio temporal para PDFs si no existe
-// Usar APP_DATA_PATH si está disponible (Electron empaquetado), sino usar __dirname
 function getTempPdfDir() {
-  if (process.env.APP_DATA_PATH) {
-    const tempDir = path.join(process.env.APP_DATA_PATH, 'temp_pdfs');
-    if (!fs.existsSync(tempDir)) {
-      fs.mkdirSync(tempDir, { recursive: true });
-    }
-    return tempDir;
-  }
   const tempDir = path.join(__dirname, 'temp_pdfs');
   if (!fs.existsSync(tempDir)) {
     fs.mkdirSync(tempDir, { recursive: true });
@@ -74,15 +67,6 @@ app.use(cors());
 app.use(bodyParser.json({ limit: '50mb' }));
 app.use(bodyParser.urlencoded({ extended: true, limit: '50mb' }));
 
-// Servir archivos estáticos del cliente (React build)
-const clientBuildPath = path.join(__dirname, '../client/build');
-if (fs.existsSync(clientBuildPath)) {
-  app.use(express.static(clientBuildPath));
-  console.log('Sirviendo archivos estáticos del cliente desde:', clientBuildPath);
-}
-
-
-
 // Rutas API
 
 // Obtener todos los motores en inventario (que no han salido)
@@ -98,7 +82,7 @@ app.get('/api/motores', async (req, res) => {
 // Registrar entrada de un motor
 app.post('/api/motores/entrada', async (req, res) => {
   try {
-    const {cliente, celular, marca, vehiculo, descripcion, fechaEntrada, estado, incluirIva, mecanicoNombre, mecanicoTelefono, fotoMotor } = req.body;
+    const { cliente, celular, marca, vehiculo, descripcion, fechaEntrada, estado, incluirIva, mecanicoNombre, mecanicoTelefono, fotoMotor } = req.body;
     
     if (!cliente) {
       return res.status(400).json({ error: 'Cliente es requerido' });
@@ -124,6 +108,22 @@ app.post('/api/motores/entrada', async (req, res) => {
   }
 });
 
+// Obtener detalles de un motor
+app.get('/api/motores/:id', async (req, res) => {
+  try {
+    const { id } = req.params;
+    const motor = await getMotorById(id);
+    
+    if (!motor) {
+      return res.status(404).json({ error: 'Motor no encontrado' });
+    }
+
+    res.json(motor);
+  } catch (error) {
+    res.status(500).json({ error: error.message });
+  }
+});
+
 // Actualizar un motor
 app.put('/api/motores/:id', async (req, res) => {
   try {
@@ -136,7 +136,7 @@ app.put('/api/motores/:id', async (req, res) => {
 });
 
 // Registrar salida de un motor
-app.post('/api/motores/salida/:id', async (req, res) => {
+app.post('/api/motores/:id/salida', async (req, res) => {
   try {
     const { id } = req.params;
     const { fechaSalida, observaciones } = req.body;
@@ -156,7 +156,7 @@ app.post('/api/motores/salida/:id', async (req, res) => {
   }
 });
 
-// Obtener historial completo (entradas y salidas)
+// Obtener historial de motores que han salido
 app.get('/api/historial', async (req, res) => {
   try {
     const historial = await getHistorial();
@@ -166,119 +166,108 @@ app.get('/api/historial', async (req, res) => {
   }
 });
 
-// Obtener un motor por ID (completo con items, trabajos y checklist)
-app.get('/api/motores/:id', async (req, res) => {
+// Obtener items de un motor
+app.get('/api/motores/:motorId/items', async (req, res) => {
   try {
-    const { id } = req.params;
-    const motor = await getMotorById(id);
-    
-    if (!motor) {
-      return res.status(404).json({ error: 'Motor no encontrado' });
-    }
-
-    // Obtener items, trabajos y checklist
-    const [items, trabajos, checklist] = await Promise.all([
-      getItemsMotor(id),
-      getTrabajosMotor(id),
-      getChecklistMotor(id)
-    ]);
-
-    res.json({
-      ...motor,
-      items,
-      trabajos,
-      checklist
-    });
-  } catch (error) {
-    res.status(500).json({ error: error.message });
-  }
-});
-
-// Rutas para items/partes del motor
-app.get('/api/motores/:id/items', async (req, res) => {
-  try {
-    const items = await getItemsMotor(req.params.id);
+    const { motorId } = req.params;
+    const items = await getItemsMotor(motorId);
     res.json(items);
   } catch (error) {
     res.status(500).json({ error: error.message });
   }
 });
 
-app.post('/api/motores/:id/items', async (req, res) => {
+// Agregar item a un motor
+app.post('/api/motores/:motorId/items', async (req, res) => {
   try {
-    const item = await addItemMotor({
-      motorId: req.params.id,
-      ...req.body
-    });
-    res.status(201).json(item);
+    const { motorId } = req.params;
+    const { item, cantidad, costo } = req.body;
+    
+    const newItem = await addItemMotor(motorId, { item, cantidad, costo });
+    res.status(201).json(newItem);
   } catch (error) {
     res.status(500).json({ error: error.message });
   }
 });
 
-app.delete('/api/items/:id', async (req, res) => {
+// Eliminar item
+app.delete('/api/items/:itemId', async (req, res) => {
   try {
-    await deleteItemMotor(req.params.id);
-    res.json({ message: 'Item eliminado' });
+    const { itemId } = req.params;
+    await deleteItemMotor(itemId);
+    res.json({ success: true });
   } catch (error) {
     res.status(500).json({ error: error.message });
   }
 });
 
-// Rutas para trabajos
-app.get('/api/motores/:id/trabajos', async (req, res) => {
+// Obtener trabajos de un motor
+app.get('/api/motores/:motorId/trabajos', async (req, res) => {
   try {
-    const trabajos = await getTrabajosMotor(req.params.id);
+    const { motorId } = req.params;
+    const trabajos = await getTrabajosMotor(motorId);
     res.json(trabajos);
   } catch (error) {
     res.status(500).json({ error: error.message });
   }
 });
 
-app.post('/api/motores/:id/trabajos', async (req, res) => {
+// Agregar trabajo a un motor
+app.post('/api/motores/:motorId/trabajos', async (req, res) => {
   try {
-    const trabajo = await addTrabajo({
-      motorId: req.params.id,
-      ...req.body
-    });
-    res.status(201).json(trabajo);
+    const { motorId } = req.params;
+    const { descripcion, estado } = req.body;
+    
+    const newTrabajo = await addTrabajo(motorId, { descripcion, estado });
+    res.status(201).json(newTrabajo);
   } catch (error) {
     res.status(500).json({ error: error.message });
   }
 });
 
+// Actualizar trabajo
 app.put('/api/trabajos/:id', async (req, res) => {
   try {
-    const trabajo = await updateTrabajo(req.params.id, req.body);
-    res.json(trabajo);
+    const { id } = req.params;
+    const { descripcion, estado } = req.body;
+    
+    const updatedTrabajo = await updateTrabajo(id, { descripcion, estado });
+    res.json(updatedTrabajo);
   } catch (error) {
     res.status(500).json({ error: error.message });
   }
 });
 
+// Eliminar trabajo
 app.delete('/api/trabajos/:id', async (req, res) => {
   try {
-    await deleteTrabajo(req.params.id);
-    res.json({ message: 'Trabajo eliminado' });
+    const { id } = req.params;
+    await deleteTrabajo(id);
+    res.json({ success: true });
   } catch (error) {
     res.status(500).json({ error: error.message });
   }
 });
 
-// Rutas para checklist
-app.get('/api/motores/:id/checklist', async (req, res) => {
+// Obtener checklist de un motor
+app.get('/api/motores/:motorId/checklist', async (req, res) => {
   try {
-    const checklist = await getChecklistMotor(req.params.id);
+    const { motorId } = req.params;
+    const checklist = await getChecklistMotor(motorId);
     res.json(checklist);
   } catch (error) {
     res.status(500).json({ error: error.message });
   }
 });
 
-app.post('/api/motores/:id/checklist', async (req, res) => {
+// Actualizar checklist de un motor
+app.put('/api/motores/:motorId/checklist', async (req, res) => {
   try {
-    const checklist = await updateChecklist(req.params.id, req.body);
-    res.json(checklist);
+    const { motorId } = req.params;
+    const { checklist } = req.body;
+    
+    const updatedChecklist = await updateChecklist(motorId, checklist);
+    res.json(updatedChecklist);
   } catch (error) {
     res.status(500).json({ error: error.message });
   }
@@ -287,140 +276,42 @@ app.post('/api/motores/:id/checklist', async (req, res) => {
 // Finalizar motor
 app.post('/api/motores/:id/finalizar', async (req, res) => {
   try {
-    const motor = await finalizarMotor(req.params.id);
-    res.json(motor);
+    const { id } = req.params;
+    const finalizedMotor = await finalizarMotor(id);
+    res.json(finalizedMotor);
   } catch (error) {
     res.status(500).json({ error: error.message });
   }
 });
 
 // Eliminar motor
-app.post('/api/motores/:id/eliminar', async (req, res) => {
+app.delete('/api/motores/:id', async (req, res) => {
   try {
-    await eliminarMotor(req.params.id);
-    res.json({ message: 'Motor eliminado' });
+    const { id } = req.params;
+    await eliminarMotor(id);
+    res.json({ success: true });
   } catch (error) {
     res.status(500).json({ error: error.message });
   }
 });
 
-// Obtener siguiente número de motor automático
-app.get('/api/motores/next-number', async (req, res) => {
+// Obtener próximo número de motor
+app.get('/api/proxximo-numero', async (req, res) => {
   try {
-    const nextNumber = await getNextMotorNumber();
-    res.json({ numeroMotor: nextNumber });
+    const numero = await getNextMotorNumber();
+    res.json({ numero });
   } catch (error) {
     res.status(500).json({ error: error.message });
   }
 });
 
-// Endpoint para subir PDF temporal
-app.post('/api/pdf/upload', (req, res) => {
-  try {
-    const { pdfData, fileName } = req.body;
-    
-    if (!pdfData || !fileName) {
-      return res.status(400).json({ error: 'PDF data y fileName son requeridos' });
-    }
-
-    // Convertir base64 a buffer
-    const pdfBuffer = Buffer.from(pdfData, 'base64');
-    const sanitizedFileName = fileName.replace(/[^a-z0-9._-]/gi, '_');
-    const uniqueFileName = `${Date.now()}_${sanitizedFileName}`;
-    const filePath = path.join(TEMP_PDF_DIR, uniqueFileName);
-
-    // Guardar archivo
-    fs.writeFileSync(filePath, pdfBuffer);
-
-    // Retornar URL para acceder al archivo
-    const fileUrl = `http://localhost:${PORT}/api/pdf/download/${uniqueFileName}`;
-    
-    res.json({ 
-      url: fileUrl,
-      fileName: uniqueFileName,
-      expiresIn: '24 horas'
-    });
-  } catch (error) {
-    console.error('Error al subir PDF:', error);
-    res.status(500).json({ error: 'Error al subir el PDF' });
-  }
+// Manejo de errores global
+app.use((err, req, res, next) => {
+  console.error('Error:', err);
+  res.status(500).json({ error: err.message });
 });
 
-// Endpoint para descargar PDF temporal
-app.get('/api/pdf/download/:fileName', (req, res) => {
-  try {
-    const { fileName } = req.params;
-    const sanitizedFileName = fileName.replace(/[^a-z0-9._-]/gi, '');
-    const filePath = path.join(TEMP_PDF_DIR, sanitizedFileName);
-
-    if (!fs.existsSync(filePath)) {
-      return res.status(404).json({ error: 'Archivo no encontrado' });
-    }
-
-    // Enviar archivo con headers apropiados
-    res.setHeader('Content-Type', 'application/pdf');
-    res.setHeader('Content-Disposition', `attachment; filename="${sanitizedFileName}"`);
-    res.sendFile(path.resolve(filePath));
-  } catch (error) {
-    console.error('Error al descargar PDF:', error);
-    res.status(500).json({ error: 'Error al descargar el PDF' });
-  }
+// Iniciar servidor
+app.listen(PORT, () => {
+  console.log(`Servidor ejecutándose en puerto ${PORT}`);
 });
-
-// Servir archivos estáticos de React en producción
-if (process.env.NODE_ENV === 'production' || process.env.ELECTRON) {
-  const buildPath = path.join(__dirname, '..', 'client', 'build');
-  if (fs.existsSync(buildPath)) {
-    app.use(express.static(buildPath));
-    
-    // Todas las rutas no-API deben servir index.html (para React Router)
-    app.get('*', (req, res) => {
-      if (!req.path.startsWith('/api')) {
-        res.sendFile(path.join(buildPath, 'index.html'));
-      }
-    });
-  }
-}
-
-// Ruta catch-all para React SPA - servir index.html para rutas no API
-app.get('*', (req, res) => {
-  const indexPath = path.join(__dirname, '../client/build/index.html');
-  if (fs.existsSync(indexPath)) {
-    res.sendFile(indexPath);
-  } else {
-    res.status(404).json({ error: 'Not found' });
-  }
-});
-
-// Iniciar servidor solo si se ejecuta directamente (esperar DB)
-if (require.main === module) {
-  console.log('Iniciando servidor...');
-  
-  dbReady.then(() => {
-    console.log('Base de datos lista, iniciando servidor HTTP...');
-    const server = app.listen(PORT, '0.0.0.0', () => {
-      console.log(`✓ Servidor corriendo en puerto ${PORT}`);
-    });
-    
-    server.on('error', (err) => {
-      console.error('Error del servidor:', err);
-      process.exit(1);
-    });
-  }).catch(err => {
-    console.error('❌ No se pudo inicializar la base de datos:', err.message);
-    console.error('El servidor continuará en modo lectura (sin BD)');
-    
-    // Iniciar servidor de todas formas en modo sin DB
-    const server = app.listen(PORT, '0.0.0.0', () => {
-      console.log(`⚠️ Servidor corriendo en puerto ${PORT} (sin BD)`);
-    });
-    
-    server.on('error', (err) => {
-      console.error('Error del servidor:', err);
-      process.exit(1);
-    });
-  });
-}
-
-// Exportar la app de Express para uso en Electron
-module.exports = app;
