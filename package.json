@@ -10,13 +10,14 @@
     "server:prod": "NODE_ENV=production node server/index.js",
     "client": "cd client && npm start",
     "install-all": "npm install && cd client && npm install",
-    "build": "cd client && npm run build",
-    "build:local": "npm run build",
+    "build": "echo \"skip client build for platform deploys\"",
+    "build:client": "cd client && npm run build",
+    "build:local": "npm run build:client",
     "electron": "electron .",
     "electron:dev": "concurrently \"npm run server:prod\" \"wait-on http://localhost:5000 && electron .\"",
-    "build:electron": "npm run build && electron-builder",
-    "dist": "npm run build && electron-builder --publish=never --config.npmRebuild=false",
-    "dist:packager": "npm run build && electron-packager . \"Rectificadora Santofimio\" --platform=win32 --arch=x64 --out=dist --overwrite --icon=build/icon.ico --asar=false"
+    "build:electron": "npm run build:client && electron-builder",
+    "dist": "npm run build:client && electron-builder --publish=never --config.npmRebuild=false",
+    "dist:packager": "npm run build:client && electron-packager . \"Rectificadora Santofimio\" --platform=win32 --arch=x64 --out=dist --overwrite --icon=build/icon.ico --asar=false"
   },
   "keywords": [
     "inventario",
