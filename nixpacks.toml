@@ -1,0 +1,13 @@
+[build]
+nixpkgs = "nixpkgs#node-18_x"
+
+[[build.phases]]
+name = "setup"
+cmds = ["npm ci --production"]
+
+[[build.phases]]
+name = "build"
+cmds = []
+
+[start]
+cmd = "node server/index.js"
