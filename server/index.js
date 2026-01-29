@@ -74,6 +74,13 @@ app.use(cors());
 app.use(bodyParser.json({ limit: '50mb' }));
 app.use(bodyParser.urlencoded({ extended: true, limit: '50mb' }));
 
+// Servir archivos estáticos del cliente (React build)
+const clientBuildPath = path.join(__dirname, '../client/build');
+if (fs.existsSync(clientBuildPath)) {
+  app.use(express.static(clientBuildPath));
+  console.log('Sirviendo archivos estáticos del cliente desde:', clientBuildPath);
+}
+
 
 
 // Rutas API
@@ -374,6 +381,16 @@ if (process.env.NODE_ENV === 'production' || process.env.ELECTRON) {
     });
   }
 }
+
+// Ruta catch-all para React SPA - servir index.html para rutas no API
+app.get('*', (req, res) => {
+  const indexPath = path.join(__dirname, '../client/build/index.html');
+  if (fs.existsSync(indexPath)) {
+    res.sendFile(indexPath);
+  } else {
+    res.status(404).json({ error: 'Not found' });
+  }
+});
 
 // Iniciar servidor solo si se ejecuta directamente (esperar DB)
 if (require.main === module) {

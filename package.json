@@ -11,6 +11,7 @@
     "client": "cd client && npm start",
     "install-all": "npm install && cd client && npm install",
     "build": "cd client && npm run build",
+    "build:prod": "npm run build && echo 'Build completado'",
     "electron": "electron .",
     "electron:dev": "concurrently \"npm run server:prod\" \"wait-on http://localhost:5000 && electron .\"",
     "postinstall": "npx @electron/rebuild -f -w sqlite3 || true",
