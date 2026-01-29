@@ -16,107 +16,123 @@ const pool = mysql.createPool({
 
 function initDatabase() {
   return new Promise(async (resolve, reject) => {
-    try {
-      console.log('Inicializando base de datos MySQL...');
-      console.log('Host:', process.env.MYSQLHOST);
-      console.log('Usuario:', process.env.MYSQLUSER);
-      console.log('Base de datos:', process.env.MYSQLDATABASE);
+    const MAX_RETRIES = 5;
+    let retries = 0;
+    
+    const tryConnect = async () => {
+      try {
+        console.log('Inicializando base de datos MySQL...');
+        console.log('Host:', process.env.MYSQLHOST);
+        console.log('Usuario:', process.env.MYSQLUSER);
+        console.log('Base de datos:', process.env.MYSQLDATABASE);
 
-      const connection = await pool.getConnection();
-      
-      // Crear tabla de motores
-      await connection.execute(`
-        CREATE TABLE IF NOT EXISTS motores (
-          id INT AUTO_INCREMENT PRIMARY KEY,
-          numero_serie VARCHAR(255) UNIQUE,
-          cliente VARCHAR(255) NOT NULL,
-          celular VARCHAR(20),
-          marca VARCHAR(100),
-          vehiculo VARCHAR(100),
-          placa VARCHAR(20),
-          descripcion TEXT,
-          fecha_entrada DATETIME NOT NULL,
-          fecha_salida DATETIME,
-          estado VARCHAR(50) DEFAULT 'En proceso',
-          observaciones TEXT,
-          incluir_iva TINYINT DEFAULT 0,
-          mecanico_nombre VARCHAR(255),
-          mecanico_telefono VARCHAR(20),
-          medida_bloque VARCHAR(100),
-          medida_biela VARCHAR(100),
-          medida_bancada VARCHAR(100),
-          medida_cigueñal VARCHAR(100),
-          eliminado TINYINT DEFAULT 0,
-          foto_motor LONGTEXT,
-          numero_motor VARCHAR(50),
-          created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
-          updated_at DATETIME DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
-          INDEX idx_cliente (cliente),
-          INDEX idx_fecha_entrada (fecha_entrada),
-          INDEX idx_estado (estado)
-        ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci
-      `);
-      console.log('✓ Tabla motores lista');
+        const connection = await pool.getConnection();
+        console.log('✓ Conexión a MySQL establecida');
+        
+        // Crear tabla de motores
+        await connection.execute(`
+          CREATE TABLE IF NOT EXISTS motores (
+            id INT AUTO_INCREMENT PRIMARY KEY,
+            numero_serie VARCHAR(255) UNIQUE,
+            cliente VARCHAR(255) NOT NULL,
+            celular VARCHAR(20),
+            marca VARCHAR(100),
+            vehiculo VARCHAR(100),
+            placa VARCHAR(20),
+            descripcion TEXT,
+            fecha_entrada DATETIME NOT NULL,
+            fecha_salida DATETIME,
+            estado VARCHAR(50) DEFAULT 'En proceso',
+            observaciones TEXT,
+            incluir_iva TINYINT DEFAULT 0,
+            mecanico_nombre VARCHAR(255),
+            mecanico_telefono VARCHAR(20),
+            medida_bloque VARCHAR(100),
+            medida_biela VARCHAR(100),
+            medida_bancada VARCHAR(100),
+            medida_cigueñal VARCHAR(100),
+            eliminado TINYINT DEFAULT 0,
+            foto_motor LONGTEXT,
+            numero_motor VARCHAR(50),
+            created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+            updated_at DATETIME DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+            INDEX idx_cliente (cliente),
+            INDEX idx_fecha_entrada (fecha_entrada),
+            INDEX idx_estado (estado)
+          ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci
+        `);
+        console.log('✓ Tabla motores lista');
 
-      // Crear tabla de trabajos
-      await connection.execute(`
-        CREATE TABLE IF NOT EXISTS trabajos (
-          id INT AUTO_INCREMENT PRIMARY KEY,
-          motor_id INT NOT NULL,
-          descripcion TEXT NOT NULL,
-          parte_asociada VARCHAR(255),
-          precio DECIMAL(10, 2) NOT NULL,
-          estado VARCHAR(50) DEFAULT 'En proceso',
-          mecanico VARCHAR(255),
-          created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
-          updated_at DATETIME DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
-          FOREIGN KEY (motor_id) REFERENCES motores(id) ON DELETE CASCADE,
-          INDEX idx_motor_id (motor_id)
-        ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci
-      `);
-      console.log('✓ Tabla trabajos lista');
+        // Crear tabla de trabajos
+        await connection.execute(`
+          CREATE TABLE IF NOT EXISTS trabajos (
+            id INT AUTO_INCREMENT PRIMARY KEY,
+            motor_id INT NOT NULL,
+            descripcion TEXT NOT NULL,
+            parte_asociada VARCHAR(255),
+            precio DECIMAL(10, 2) NOT NULL,
+            estado VARCHAR(50) DEFAULT 'En proceso',
+            mecanico VARCHAR(255),
+            created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+            updated_at DATETIME DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+            FOREIGN KEY (motor_id) REFERENCES motores(id) ON DELETE CASCADE,
+            INDEX idx_motor_id (motor_id)
+          ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci
+        `);
+        console.log('✓ Tabla trabajos lista');
 
-      // Crear tabla de items/partes del motor
-      await connection.execute(`
-        CREATE TABLE IF NOT EXISTS items_motor (
-          id INT AUTO_INCREMENT PRIMARY KEY,
-          motor_id INT NOT NULL,
-          cantidad INT DEFAULT 1,
-          descripcion VARCHAR(255) NOT NULL,
-          valor DECIMAL(10, 2),
-          created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
-          updated_at DATETIME DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
-          FOREIGN KEY (motor_id) REFERENCES motores(id) ON DELETE CASCADE,
-          INDEX idx_motor_id (motor_id)
-        ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci
-      `);
-      console.log('✓ Tabla items_motor lista');
+        // Crear tabla de items/partes del motor
+        await connection.execute(`
+          CREATE TABLE IF NOT EXISTS items_motor (
+            id INT AUTO_INCREMENT PRIMARY KEY,
+            motor_id INT NOT NULL,
+            cantidad INT DEFAULT 1,
+            descripcion VARCHAR(255) NOT NULL,
+            valor DECIMAL(10, 2),
+            created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+            updated_at DATETIME DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+            FOREIGN KEY (motor_id) REFERENCES motores(id) ON DELETE CASCADE,
+            INDEX idx_motor_id (motor_id)
+          ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci
+        `);
+        console.log('✓ Tabla items_motor lista');
 
-      // Crear tabla de checklist de componentes
-      await connection.execute(`
-        CREATE TABLE IF NOT EXISTS checklist_componentes (
-          id INT AUTO_INCREMENT PRIMARY KEY,
-          motor_id INT NOT NULL,
-          componente VARCHAR(255) NOT NULL,
-          seccion VARCHAR(100) NOT NULL,
-          presente TINYINT DEFAULT 0,
-          observaciones TEXT,
-          created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
-          updated_at DATETIME DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
-          FOREIGN KEY (motor_id) REFERENCES motores(id) ON DELETE CASCADE,
-          INDEX idx_motor_id (motor_id),
-          INDEX idx_seccion (seccion)
-        ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci
-      `);
-      console.log('✓ Tabla checklist_componentes lista');
+        // Crear tabla de checklist de componentes
+        await connection.execute(`
+          CREATE TABLE IF NOT EXISTS checklist_componentes (
+            id INT AUTO_INCREMENT PRIMARY KEY,
+            motor_id INT NOT NULL,
+            componente VARCHAR(255) NOT NULL,
+            seccion VARCHAR(100) NOT NULL,
+            presente TINYINT DEFAULT 0,
+            observaciones TEXT,
+            created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+            updated_at DATETIME DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+            FOREIGN KEY (motor_id) REFERENCES motores(id) ON DELETE CASCADE,
+            INDEX idx_motor_id (motor_id),
+            INDEX idx_seccion (seccion)
+          ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci
+        `);
+        console.log('✓ Tabla checklist_componentes lista');
 
-      connection.release();
-      console.log('Base de datos inicializada correctamente');
-      resolve();
-    } catch (error) {
-      console.error('Error al inicializar base de datos:', error);
-      reject(error);
-    }
+        connection.release();
+        console.log('✓ Base de datos inicializada correctamente');
+        resolve();
+      } catch (error) {
+        retries++;
+        console.error(`Error al inicializar base de datos (intento ${retries}/${MAX_RETRIES}):`, error.message);
+        
+        if (retries < MAX_RETRIES) {
+          console.log(`Reintentando en 3 segundos...`);
+          setTimeout(tryConnect, 3000);
+        } else {
+          console.error('❌ No se pudo conectar a la base de datos después de varios intentos');
+          reject(error);
+        }
+      }
+    };
+    
+    tryConnect();
   });
 }
 

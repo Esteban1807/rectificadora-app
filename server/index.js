@@ -394,13 +394,31 @@ app.get('*', (req, res) => {
 
 // Iniciar servidor solo si se ejecuta directamente (esperar DB)
 if (require.main === module) {
+  console.log('Iniciando servidor...');
+  
   dbReady.then(() => {
-    app.listen(PORT, '0.0.0.0', () => {
-      console.log(`Servidor corriendo en puerto ${PORT}`);
+    console.log('Base de datos lista, iniciando servidor HTTP...');
+    const server = app.listen(PORT, '0.0.0.0', () => {
+      console.log(`✓ Servidor corriendo en puerto ${PORT}`);
+    });
+    
+    server.on('error', (err) => {
+      console.error('Error del servidor:', err);
+      process.exit(1);
     });
   }).catch(err => {
-    console.error('No se pudo inicializar la base de datos, servidor no iniciado:', err);
-    process.exit(1);
+    console.error('❌ No se pudo inicializar la base de datos:', err.message);
+    console.error('El servidor continuará en modo lectura (sin BD)');
+    
+    // Iniciar servidor de todas formas en modo sin DB
+    const server = app.listen(PORT, '0.0.0.0', () => {
+      console.log(`⚠️ Servidor corriendo en puerto ${PORT} (sin BD)`);
+    });
+    
+    server.on('error', (err) => {
+      console.error('Error del servidor:', err);
+      process.exit(1);
+    });
   });
 }
 
